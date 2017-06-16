@@ -16,6 +16,7 @@ module Middleman
       option :home_title, 'Home', 'The default link title of the home page (located at "/"), if otherwise not detected.'
       option :promote_files, ['index.html.erb'], 'A list of files you want to push to the front of the tree (if they exist).'
       option :ext_whitelist, [], 'A whitelist of filename extensions (post-render) that we are allowing in our navtree. Example: [".html"]'
+      option :directory_indexes, [], 'A list files that should be used as the root page of a directory. These pages will be linked from the root of their enclosing directory, instead of as element of it.'
 
       # Helpers for use within templates and layouts.
       self.defined_helpers = [ ::Middleman::NavTree::Helpers ]
@@ -96,8 +97,14 @@ module Middleman
               next unless options.ext_whitelist.include? File.extname(filename)
             end
 
+            if options.directory_indexes.include? filename
+              key = "directory_index"
+            else
+              key = filename.gsub(' ', '%20')
+            end
+
             original_path = path.sub(/^#{app.config[:source]}/, '') + '/' + filename
-            data.store(filename.gsub(' ', '%20'), original_path.gsub(' ', '%20'))
+            data.store(key, original_path.gsub(' ', '%20'))
           end
         end
 

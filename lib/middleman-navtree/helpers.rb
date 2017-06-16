@@ -2,7 +2,6 @@ module Middleman
   module NavTree
     # NavTree-related helpers that are available to the Middleman application in +config.rb+ and in templates.
     module Helpers
-
       #  A recursive helper for converting source tree data from into HTML
       def tree_to_html(value, depth = Float::INFINITY, key = nil, level = 0)
         html = ''
@@ -11,19 +10,9 @@ module Middleman
           # This is a file.
           # Get the Sitemap resource for this file.
           # note: sitemap.extensionless_path converts the path to its 'post-build' extension.
-
-          # Make sure the extension path ends with .html (in case we're parsing someting like .adoc)
-          extensionlessPath = sitemap.extensionless_path(value)
-          unless extensionlessPath.end_with? ".html"
-           extensionlessPath << ".html"
-          end
-
-          this_resource = sitemap.find_resource_by_path(extensionlessPath)
-          if this_resource
-            # Define string for active states.
-            active = this_resource == current_page ? 'active' : ''
-            title = discover_title(this_resource)
-            link = link_to(title, this_resource)
+    
+          link, active = resolve_page(value)
+          if link
             html << "<li class='child #{active}'>#{link}</li>"
           end
         else
@@ -37,12 +26,13 @@ module Middleman
           elsif depth >= (level + 1)
             # This is a directory.
             # The directory has a key and should be listed in the page hieararcy with HTML.
-            dir_name = format_directory_name(key)
-            html << "<li class='parent'><span class='parent-label'>#{dir_name}</span>"
+            content, active = format_directory_name(key, value)
+            html << "<li class='parent #{active}'><span class='parent-label'>#{content}</span>"
             html << '<ul>'
 
             # Loop through all the directory's contents.
             value.each do |newkey, child|
+              next if newkey == 'directory_index'
               html << tree_to_html(child, depth, newkey, level + 1)
             end
             html << '</ul>'
@@ -122,12 +112,19 @@ module Middleman
 
       # Format Directory name for display in navtree.
       # Example Name: 1%20-%20sink-or_swim
-      def format_directory_name(dir_name)
+      def format_directory_name(dir_name, children)
+        if index_child = children["directory_index"]
+          link, active = resolve_page(index_child)
+          if link
+            return link, active
+          end
+        end
+
         formatted_name = dir_name.gsub('%20', ' ') #=> 1 - sink-or_swim
         formatted_name.gsub!(/(?!\s)-(?!\s)/, ' ') #=> 1 - sink or_swim
         formatted_name.gsub!(/_/, ' ') #=> 1 - sink or swim
         # @todo: Find a way for titleize to not blow away ' - ' formatting.
-        formatted_name.titleize! #=> 1 Sink or Swim
+        return formatted_name.titleize!, nil #=> 1 Sink or Swim
       end
 
       # Utility helper for getting the page title for display in the navtree.
@@ -149,6 +146,30 @@ module Middleman
         end
       end
 
+      # Resolve a page name as found in the tree into a proper link and an
+      # active class
+      #
+      # @param [String] value the resource name
+      # @return [nil,(String,String)] either nil if the argument could not be
+      #   resolved, or a pair of strings. The first element of the pair is the
+      #   link and the second the active class that should be applied to the
+      #   enclosing <li>
+      def resolve_page(value)
+        # Make sure the extension path ends with .html (in case we're parsing someting like .adoc)
+        extensionlessPath = sitemap.extensionless_path(value)
+        unless extensionlessPath.end_with? ".html"
+         extensionlessPath << ".html"
+        end
+        
+        this_resource = sitemap.find_resource_by_path(extensionlessPath)
+        if this_resource
+          # Define string for active states.
+          active = this_resource == current_page ? 'active' : ''
+          title = discover_title(this_resource)
+          link = link_to(title, this_resource)
+          return link, active
+        end
+      end
     end
   end
 end
