@@ -3,7 +3,7 @@ module Middleman
     # NavTree-related helpers that are available to the Middleman application in +config.rb+ and in templates.
     module Helpers
       #  A recursive helper for converting source tree data from into HTML
-      def tree_to_html(value, depth = Float::INFINITY, key = nil, level = 0)
+      def tree_to_html(value, depth = Float::INFINITY, key = nil, level = 0, hide_directory_index: false)
         html = ''
 
         if value.is_a?(String)
@@ -11,16 +11,22 @@ module Middleman
           # Get the Sitemap resource for this file.
           # note: sitemap.extensionless_path converts the path to its 'post-build' extension.
     
-          link, active = resolve_page(value)
-          if link
+          if this_resource = find_resource_by_path(value)
+            # Define string for active states.
+            active = this_resource == current_page ? 'active' : ''
+            title  = discover_title(this_resource)
+            link   = link_to(title, this_resource)
             html << "<li class='child #{active}'>#{link}</li>"
           end
         else
+          value = Hash[value.sort_by { |key, path| sort_info(key, path) }]
+
           # This is the first level source directory. We treat it special because
           # it has no key and needs no list item.
           if key.nil?
             value.each do |newkey, child|
-              html << tree_to_html(child, depth, newkey, level + 1)
+              html << tree_to_html(child, depth, newkey, level + 1,
+                                   hide_directory_index: hide_directory_index)
             end
           # Continue rendering deeper levels of the tree, unless restricted by depth.
           elsif depth >= (level + 1)
@@ -32,14 +38,38 @@ module Middleman
 
             # Loop through all the directory's contents.
             value.each do |newkey, child|
-              next if newkey == 'directory_index'
-              html << tree_to_html(child, depth, newkey, level + 1)
+              next if hide_directory_index && (newkey == 'directory_index')
+              html << tree_to_html(child, depth, newkey, level + 1,
+                                   hide_directory_index: hide_directory_index)
             end
             html << '</ul>'
             html << '</li>'
           end
         end
         return html
+      end
+
+      def sort_info(key, path)
+        if path.kind_of?(Hash) && (index_path = path['directory_index'])
+          if page = find_resource_by_path(index_path)
+            if info = page.data[:directory_sort_info]
+              return info
+            end
+          end
+        end
+
+        if path.kind_of?(String) 
+          if page = find_resource_by_path(path)
+            if info = page.data[:sort_info]
+              return info
+            end
+          end
+        end
+
+        if key == 'directory_index'
+          0
+        else 1000
+        end
       end
 
       # Pagination helpers
@@ -113,9 +143,12 @@ module Middleman
       # Format Directory name for display in navtree.
       # Example Name: 1%20-%20sink-or_swim
       def format_directory_name(dir_name, children)
-        if index_child = children["directory_index"]
-          link, active = resolve_page(index_child)
-          if link
+        if directory_index_path = children["directory_index"]
+          if directory_index_page = find_resource_by_path(directory_index_path)
+            active = directory_index_path == current_page ? 'active' : ''
+            title  = directory_index_page.data.directory_title ||
+              discover_title(directory_index_page)
+            link   = link_to(title, directory_index_page)
             return link, active
           end
         end
@@ -146,29 +179,14 @@ module Middleman
         end
       end
 
-      # Resolve a page name as found in the tree into a proper link and an
-      # active class
-      #
-      # @param [String] value the resource name
-      # @return [nil,(String,String)] either nil if the argument could not be
-      #   resolved, or a pair of strings. The first element of the pair is the
-      #   link and the second the active class that should be applied to the
-      #   enclosing <li>
-      def resolve_page(value)
+      def find_resource_by_path(path)
         # Make sure the extension path ends with .html (in case we're parsing someting like .adoc)
-        extensionlessPath = sitemap.extensionless_path(value)
+        extensionlessPath = sitemap.extensionless_path(path)
         unless extensionlessPath.end_with? ".html"
          extensionlessPath << ".html"
         end
         
-        this_resource = sitemap.find_resource_by_path(extensionlessPath)
-        if this_resource
-          # Define string for active states.
-          active = this_resource == current_page ? 'active' : ''
-          title = discover_title(this_resource)
-          link = link_to(title, this_resource)
-          return link, active
-        end
+        sitemap.find_resource_by_path(extensionlessPath)
       end
     end
   end
