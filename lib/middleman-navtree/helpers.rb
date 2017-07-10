@@ -5,6 +5,7 @@ module Middleman
       #  A recursive helper for converting source tree data from into HTML
       def tree_to_html(value, depth = Float::INFINITY, key = nil, level = 0, hide_directory_index: false)
         html = ''
+        active = nil
 
         if value.is_a?(String)
           # This is a file.
@@ -12,11 +13,11 @@ module Middleman
           # note: sitemap.extensionless_path converts the path to its 'post-build' extension.
     
           if this_resource = find_resource_by_path(value)
-            # Define string for active states.
-            active = this_resource == current_page ? 'active' : ''
+            active = this_resource == current_page ? ' active' : nil
+
             title  = discover_title(this_resource)
             link   = link_to(title, this_resource)
-            html << "<li class='child #{active}'>#{link}</li>"
+            html << "<li class='child#{active}'>#{link}</li>"
           end
         else
           value = Hash[value.sort_by { |key, path| sort_info(key, path) }]
@@ -25,28 +26,41 @@ module Middleman
           # it has no key and needs no list item.
           if key.nil?
             value.each do |newkey, child|
-              html << tree_to_html(child, depth, newkey, level + 1,
-                                   hide_directory_index: hide_directory_index)
+              child_content, child_active =
+                tree_to_html(child, depth, newkey, level + 1,
+                             hide_directory_index: hide_directory_index)
+              html << child_content
+              active ||= child_active
             end
-          # Continue rendering deeper levels of the tree, unless restricted by depth.
+            # Continue rendering deeper levels of the tree, unless restricted by depth.
           elsif depth >= (level + 1)
             # This is a directory.
             # The directory has a key and should be listed in the page hieararcy with HTML.
-            content, active = format_directory_name(key, value)
-            html << "<li class='parent #{active}'><span class='parent-label'>#{content}</span>"
-            html << '<ul>'
+            contents = ""
+            directory_name, active = format_directory_name(key, value)
 
             # Loop through all the directory's contents.
             value.each do |newkey, child|
               next if hide_directory_index && (newkey == 'directory_index')
-              html << tree_to_html(child, depth, newkey, level + 1,
-                                   hide_directory_index: hide_directory_index)
+              child_content, child_active =
+                tree_to_html(child, depth, newkey, level + 1,
+                             hide_directory_index: hide_directory_index)
+              contents << child_content
+              active ||= child_active
             end
+            html << "<li class='parent#{active}'><span class='parent-label'>#{directory_name}</span>"
+            html << '<ul>'
+            html << contents
             html << '</ul>'
             html << '</li>'
           end
         end
-        return html
+
+        if level == 0
+          return html
+        else
+          return html, active
+        end
       end
 
       def sort_info(key, path)
@@ -145,7 +159,7 @@ module Middleman
       def format_directory_name(dir_name, children)
         if directory_index_path = children["directory_index"]
           if directory_index_page = find_resource_by_path(directory_index_path)
-            active = directory_index_path == current_page ? 'active' : ''
+            active = directory_index_path == current_page ? ' active' : nil
             title  = directory_index_page.data.directory_title ||
               discover_title(directory_index_page)
             link   = link_to(title, directory_index_page)
